@@ -17,14 +17,44 @@ sudo bash cleanup.sh
 ## Script Functionality
 
 The cleanup script performs the following operations:
+
+### Core System Cleanup:
 - Clearing Time Machine local snapshots
 - Clearing system and user cache files
-- Clearing browser caches (Safari, Chrome, Firefox)
+- Clearing browser caches (Safari, Chrome, Firefox, Edge, Opera, Brave)
 - Clearing log files
 - Clearing temporary files
 - Clearing iOS device backups
 - Emptying Trash
 - Purging inactive memory
+
+### Developer Tools Cleanup:
+- Homebrew cache and package cleanup
+- Python package caches (pip, conda, wheel cache)
+- Node.js package manager caches (npm, yarn, pnpm, bun)
+- Ruby gems cleanup
+- Rust/Cargo cache cleanup
+- Xcode and iOS development data cleanup
+
+### Professional Applications:
+- Adobe Creative Suite caches
+- Final Cut Pro and Logic Pro caches
+- Sketch, Figma, and design tool caches
+- Unity, Blender, and development tool caches
+
+### Advanced System Cleanup:
+- Docker containers, images, and cache cleanup
+- Mail attachments and downloads cleanup
+- Font cache and QuickLook thumbnails
+- Language localization files removal
+- macOS and App Store update cache cleanup
+- Virtual machine directory scanning
+- Hibernation sleep image cleanup
+- Hidden user folder caches
+- Core Data and CloudKit caches
+- macOS installer applications removal
+- Spotlight index optimization
+- Large file scanner and suggestions
 
 ## Script Architecture
 
