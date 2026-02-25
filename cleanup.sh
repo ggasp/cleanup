@@ -41,14 +41,29 @@ calculate_size() {
 
 calculate_size_bytes() {
     if [ -e "$1" ]; then
-        du -sk "$1" 2>/dev/null | awk '{print $1}'
+        local result
+        result=$(du -sk "$1" 2>/dev/null | awk '{print $1}')
+        echo "${result:-0}"
     else
         echo "0"
     fi
 }
 
 show_space_info() {
-    df -h / | grep -v Filesystem | awk '{print $4 " available (" $5 " used)"}'
+    local total_bytes available_bytes used_bytes
+    total_bytes=$(diskutil info / | awk -F'[:(]' '/Container Total Space/{gsub(/[^0-9]/,"",$3); print $3}')
+    available_bytes=$(diskutil info / | awk -F'[:(]' '/Container Free Space/{gsub(/[^0-9]/,"",$3); print $3}')
+    if [ -n "$total_bytes" ] && [ -n "$available_bytes" ] && [ "$total_bytes" -gt 0 ] 2>/dev/null; then
+        used_bytes=$((total_bytes - available_bytes))
+        local total_gb=$((total_bytes / 1073741824))
+        local available_gb=$((available_bytes / 1073741824))
+        local used_gb=$((used_bytes / 1073741824))
+        local pct=$((used_bytes * 100 / total_bytes))
+        echo "${available_gb}Gi available of ${total_gb}Gi (${pct}% used)"
+    else
+        # Fallback for non-APFS volumes
+        df -h / | grep -v Filesystem | awk '{print $4 " available (" $5 " used)"}'
+    fi
 }
 
 log_operation() {
@@ -180,9 +195,11 @@ fi
 
 # Font cache, QuickLook, DNS
 echo -e "  Font/QuickLook/DNS cache → cleaning..."
-sudo atsutil databases -remove 2>/dev/null
-sudo atsutil server -shutdown 2>/dev/null
-sudo atsutil server -ping 2>/dev/null
+# atsutil was removed in macOS 14+; use font cache directory cleanup instead
+if [ -d "/System/Library/Caches/com.apple.FontRegistry" ]; then
+    rm -rf /System/Library/Caches/com.apple.FontRegistry/* 2>/dev/null
+fi
+find /var/folders -name "com.apple.FontRegistry" -type d -exec rm -rf {} + 2>/dev/null
 qlmanage -r cache 2>/dev/null
 sudo dscacheutil -flushcache 2>/dev/null
 sudo killall -HUP mDNSResponder 2>/dev/null
@@ -215,7 +232,8 @@ auto_clean "cloudkit cache" "$USER_HOME/Library/Caches/com.apple.cloudkit"
 auto_clean "Updates" "/Library/Updates"
 auto_clean "App Store cache" "$USER_HOME/Library/Caches/com.apple.appstore"
 auto_clean "Software Update cache" "$USER_HOME/Library/Caches/com.apple.SoftwareUpdate"
-sudo softwareupdate --clear-catalog 2>/dev/null
+# softwareupdate --clear-catalog removed in recent macOS; clean cache dirs instead
+rm -rf /Library/Caches/com.apple.SoftwareUpdate/* 2>/dev/null
 
 # Hidden developer caches
 HIDDEN_DEV_CACHES=(
