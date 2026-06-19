@@ -80,6 +80,26 @@ def remove_matching_children(path: Path, patterns: tuple[str, ...], context: Act
     )
 
 
+def clean_known_subdirs(path: Path, names: tuple[str, ...], context: ActionContext) -> ActionResult:
+    target = path.expanduser()
+    _ensure_cleanable_directory(target)
+    matches = [child for child in target.iterdir() if child.name in names and child.is_dir() and not child.is_symlink()]
+    bytes_before = sum(directory_size(child) for child in matches)
+    if context.dry_run:
+        return ActionResult("clean-known-subdirs", str(target), bytes_before, True, "Dry run: no files deleted.")
+
+    for child in matches:
+        shutil.rmtree(child, ignore_errors=True)
+    bytes_after = sum(directory_size(child) for child in matches if child.exists())
+    return ActionResult(
+        "clean-known-subdirs",
+        str(target),
+        max(0, bytes_before - bytes_after),
+        False,
+        "Known cache subdirectories cleaned.",
+    )
+
+
 def remove_path(path: Path, context: ActionContext) -> ActionResult:
     target = path.expanduser()
     _ensure_removable_path(target)
@@ -127,7 +147,14 @@ def run_fresh_start_actions(findings: list[Finding], context: ActionContext) -> 
 def run_deep_clean_actions(findings: list[Finding], context: ActionContext) -> list[ActionResult]:
     if not context.deep_clean:
         return []
-    return _run_safe_and_moderate_actions(findings, context)
+    results: list[ActionResult] = []
+    for finding in findings:
+        if finding.risk not in {RiskLevel.SAFE, RiskLevel.MODERATE} or finding.action is None:
+            continue
+        result = _run_action_for_finding(finding, context)
+        if result is not None:
+            results.append(result)
+    return results
 
 
 def _run_safe_and_moderate_actions(findings: list[Finding], context: ActionContext) -> list[ActionResult]:
@@ -151,6 +178,8 @@ def _run_action_for_finding(finding: Finding, context: ActionContext) -> ActionR
         result = remove_matching_children(path, DOWNLOAD_INSTALLER_PATTERNS, context)
     elif finding.action == "remove-path":
         result = remove_path(path, context)
+    elif finding.action == "clean-electron-cache-subdirs":
+        result = clean_known_subdirs(path, ("Cache", "Code Cache", "GPUCache", "Service Worker"), context)
     else:
         return None
     return ActionResult(finding.action, result.path, result.bytes_reclaimed, result.dry_run, result.message)
