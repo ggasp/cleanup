@@ -38,7 +38,7 @@ class ActionTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 clean_directory_contents(protected, ActionContext(dry_run=True, yes_safe=True))
 
-    def test_deep_clean_runs_with_deep_clean_context_without_fresh_start(self):
+    def test_deep_clean_removes_actionable_moderate_findings(self):
         with tempfile.TemporaryDirectory() as tmp:
             cache_file = Path(tmp) / "home" / ".cache" / "pip" / "http" / "cache.bin"
             cache_file.parent.mkdir(parents=True)
