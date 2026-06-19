@@ -68,7 +68,11 @@ def scan(config: ScanConfig | None = None) -> ScanReport:
     home = config.home.expanduser()
     root = config.system_root
     findings: list[Finding] = []
-    appstore_cache_paths = (home / "Library" / "Caches" / "com.apple.appstore",)
+    user_cache_exclusion_paths = (
+        home / "Library" / "Caches" / "com.apple.appstore",
+        home / "Library" / "Caches" / "Homebrew",
+        home / "Library" / "Caches" / "pypoetry",
+    )
     user_log_report_paths = (
         home / "Library" / "Logs" / "DiagnosticReports",
         home / "Library" / "Logs" / "CrashReporter",
@@ -89,9 +93,9 @@ def scan(config: ScanConfig | None = None) -> ScanReport:
         title="User caches",
         path=home / "Library" / "Caches",
         risk=RiskLevel.SAFE,
-        action=None if _any_path_exists(appstore_cache_paths) else "clean-user-caches",
+        action=None if _any_path_exists(user_cache_exclusion_paths) else "clean-user-caches",
         detail="Regenerable app cache files. Apps may be slower on first launch after cleanup.",
-        exclude_paths=appstore_cache_paths,
+        exclude_paths=user_cache_exclusion_paths,
     )
     _add_path_finding(
         findings,
@@ -310,8 +314,11 @@ def _add_browser_runtime_caches(findings: list[Finding], home: Path) -> None:
         ("Opera", home / "Library" / "Application Support" / "com.operasoftware.Opera"),
     )
     cache_patterns = (
+        ("Code Cache", "Code Cache"),
         ("Code Cache", "*/Code Cache"),
+        ("GPUCache", "GPUCache"),
         ("GPUCache", "*/GPUCache"),
+        ("Service Worker CacheStorage", "Service Worker/CacheStorage"),
         ("Service Worker CacheStorage", "*/Service Worker/CacheStorage"),
     )
     for browser_name, browser_root in browser_roots:

@@ -89,6 +89,20 @@ class ScannerTests(unittest.TestCase):
             self.assertEqual(by_title["Software Update cache"].action, "clean-directory-contents")
             self.assertEqual(by_title["Software Update cache"].risk, RiskLevel.MODERATE)
 
+    def test_scan_reports_root_level_opera_runtime_caches(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "home"
+            code_cache = home / "Library" / "Application Support" / "com.operasoftware.Opera" / "Code Cache"
+            write_file(code_cache / "code.bin", 100)
+
+            report = scan(ScanConfig(home=home, system_root=root, min_size=1))
+            opera_cache = next(f for f in report.findings if f.title == "Opera Code Cache")
+
+            self.assertEqual(opera_cache.path, str(code_cache))
+            self.assertEqual(opera_cache.action, "clean-directory-contents")
+            self.assertEqual(opera_cache.risk, RiskLevel.MODERATE)
+
     def test_scan_does_not_double_count_diagnostic_reports_under_user_logs(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -112,6 +126,25 @@ class ScannerTests(unittest.TestCase):
 
             self.assertEqual(report.total_reclaimable_bytes, 100)
             self.assertNotIn("User caches", titles)
+
+    def test_scan_does_not_double_count_precise_user_cache_findings(self):
+        cases = (
+            ("Homebrew cache", Path("Homebrew") / "download.bin"),
+            ("Poetry cache", Path("pypoetry") / "artifact.bin"),
+        )
+        for title, relative_path in cases:
+            with self.subTest(title=title):
+                with tempfile.TemporaryDirectory() as tmp:
+                    root = Path(tmp)
+                    home = root / "home"
+                    write_file(home / "Library" / "Caches" / relative_path, 100)
+
+                    report = scan(ScanConfig(home=home, system_root=root, min_size=1))
+                    by_title = {finding.title: finding for finding in report.findings}
+
+                    self.assertEqual(report.total_reclaimable_bytes, 100)
+                    self.assertEqual(by_title[title].action, "clean-directory-contents")
+                    self.assertNotIn("User caches", by_title)
 
     def test_scan_respects_min_size(self):
         with tempfile.TemporaryDirectory() as tmp:
