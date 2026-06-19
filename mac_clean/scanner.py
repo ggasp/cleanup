@@ -72,6 +72,14 @@ def scan(config: ScanConfig | None = None) -> ScanReport:
         home / "Library" / "Caches" / "com.apple.appstore",
         home / "Library" / "Caches" / "Homebrew",
         home / "Library" / "Caches" / "pypoetry",
+        home / "Library" / "Caches" / "uv",
+        home / "Library" / "Caches" / "go-build",
+        home / "Library" / "Caches" / "com.apple.FinalCut",
+        home / "Library" / "Caches" / "com.apple.logic10",
+        home / "Library" / "Caches" / "com.figma.Desktop",
+        home / "Library" / "Caches" / "com.bohemiancoding.sketch3",
+        home / "Library" / "Caches" / "org.blenderfoundation.blender",
+        home / "Library" / "Caches" / "com.unity3d.UnityHub",
     )
     user_log_report_paths = (
         home / "Library" / "Logs" / "DiagnosticReports",
@@ -166,6 +174,18 @@ def scan(config: ScanConfig | None = None) -> ScanReport:
         action="clean-directory-contents",
         detail="Rebuildable simulator cache files.",
     )
+    _add_command_finding(
+        findings,
+        category="Developer",
+        title="Unavailable simulators",
+        command="xcrun simctl delete unavailable",
+        risk=RiskLevel.MODERATE,
+        action="run-xcrun-simctl-delete-unavailable",
+        detail="Deletes simulator records for runtimes no longer installed. Dry-run reports the command.",
+    )
+    _add_xcode_platform_support(findings, home)
+    _add_professional_app_caches(findings, home)
+    _add_ai_and_editor_caches(findings, home)
     _add_path_finding(
         findings,
         category="Developer",
@@ -248,6 +268,29 @@ def _add_path_finding(
     if size <= 0:
         return
     findings.append(Finding(category, title, str(path), size, risk, action, detail))
+
+
+def _add_command_finding(
+    findings: list[Finding],
+    *,
+    category: str,
+    title: str,
+    command: str,
+    risk: RiskLevel,
+    action: str,
+    detail: str,
+) -> None:
+    findings.append(
+        Finding(
+            category=category,
+            title=title,
+            path=command,
+            bytes_reclaimable=0,
+            risk=risk,
+            action=action,
+            detail=detail,
+        )
+    )
 
 
 def _add_system_path_finding(
@@ -382,6 +425,14 @@ def _add_package_manager_caches(findings: list[Finding], home: Path) -> None:
         ("Bun cache", home / ".bun" / "install" / "cache"),
         ("pip cache", home / ".cache" / "pip"),
         ("Poetry cache", home / "Library" / "Caches" / "pypoetry"),
+        ("conda packages", home / ".conda" / "pkgs"),
+        ("conda cache", home / "opt" / "anaconda3" / "pkgs"),
+        ("Ruby gem cache", home / ".gem" / "cache"),
+        ("Bundler cache", home / ".bundle" / "cache"),
+        ("uv cache", home / "Library" / "Caches" / "uv"),
+        ("pipx cache", home / ".local" / "pipx" / ".cache"),
+        ("Go build cache", home / "Library" / "Caches" / "go-build"),
+        ("Go module download cache", home / "go" / "pkg" / "mod" / "cache" / "download"),
         ("Gradle cache", home / ".gradle" / "caches"),
         ("Maven repository", home / ".m2" / "repository"),
         ("Cargo registry cache", home / ".cargo" / "registry" / "cache"),
@@ -399,6 +450,69 @@ def _add_package_manager_caches(findings: list[Finding], home: Path) -> None:
             action="clean-directory-contents",
             detail="Package manager cache. Reinstalling dependencies may need network downloads.",
         )
+
+
+def _add_xcode_platform_support(findings: list[Finding], home: Path) -> None:
+    paths = (
+        ("Xcode watchOS DeviceSupport", home / "Library" / "Developer" / "Xcode" / "watchOS DeviceSupport"),
+        ("Xcode tvOS DeviceSupport", home / "Library" / "Developer" / "Xcode" / "tvOS DeviceSupport"),
+    )
+    for title, path in paths:
+        _add_path_finding(
+            findings,
+            category="Developer",
+            title=title,
+            path=path,
+            risk=RiskLevel.MODERATE,
+            action="clean-directory-contents",
+            detail="Device symbols for debugging. Xcode can recreate needed data when devices reconnect.",
+        )
+
+
+def _add_professional_app_caches(findings: list[Finding], home: Path) -> None:
+    paths = (
+        ("Adobe media cache files", home / "Library" / "Application Support" / "Adobe" / "Common" / "Media Cache Files"),
+        ("Adobe media cache", home / "Library" / "Application Support" / "Adobe" / "Common" / "Media Cache"),
+        ("Final Cut Pro cache", home / "Library" / "Caches" / "com.apple.FinalCut"),
+        ("Logic Pro cache", home / "Library" / "Caches" / "com.apple.logic10"),
+        ("Figma cache", home / "Library" / "Caches" / "com.figma.Desktop"),
+        ("Sketch cache", home / "Library" / "Caches" / "com.bohemiancoding.sketch3"),
+        ("Blender cache", home / "Library" / "Caches" / "org.blenderfoundation.blender"),
+        ("Unity Hub cache", home / "Library" / "Caches" / "com.unity3d.UnityHub"),
+    )
+    for title, path in paths:
+        _add_path_finding(
+            findings,
+            category="Professional Apps",
+            title=title,
+            path=path,
+            risk=RiskLevel.MODERATE,
+            action="clean-directory-contents",
+            detail="Application-generated cache. The app may rebuild previews, indexes, or media cache files.",
+        )
+
+
+def _add_ai_and_editor_caches(findings: list[Finding], home: Path) -> None:
+    roots = (
+        ("Claude", home / "Library" / "Application Support" / "Claude"),
+        ("Cursor", home / "Library" / "Application Support" / "Cursor"),
+        ("Continue", home / "Library" / "Application Support" / "Continue"),
+        ("VS Code", home / "Library" / "Application Support" / "Code"),
+    )
+    cache_names = ("Cache", "Code Cache", "GPUCache")
+    for app_name, app_root in roots:
+        if not app_root.exists():
+            continue
+        for cache_name in cache_names:
+            _add_path_finding(
+                findings,
+                category="AI and Editors",
+                title=f"{app_name} {cache_name}",
+                path=app_root / cache_name,
+                risk=RiskLevel.MODERATE,
+                action="clean-directory-contents",
+                detail="Editor or AI app cache. The app may need to rebuild cached UI or model interaction data.",
+            )
 
 
 def _add_project_dependencies(findings: list[Finding], *, home: Path) -> None:

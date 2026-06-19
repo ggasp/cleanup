@@ -50,6 +50,44 @@ class ScannerTests(unittest.TestCase):
             self.assertEqual(by_title["Project dependencies"].action, "remove-path")
             self.assertEqual(by_title["Aerial and wallpaper videos"].action, "clean-directory-contents")
 
+    def test_scan_reports_developer_professional_and_ai_caches(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "home"
+            write_file(home / ".conda" / "pkgs" / "pkg.tar.bz2", 100)
+            write_file(home / ".gem" / "cache" / "gem.gem", 100)
+            write_file(home / "Library" / "Caches" / "uv" / "wheel.whl", 100)
+            write_file(home / "Library" / "Caches" / "go-build" / "obj", 100)
+            write_file(home / "go" / "pkg" / "mod" / "cache" / "download" / "mod.zip", 100)
+            write_file(home / "Library" / "Developer" / "Xcode" / "watchOS DeviceSupport" / "symbols.bin", 100)
+            write_file(home / "Library" / "Application Support" / "Adobe" / "Common" / "Media Cache Files" / "media.cfa", 100)
+            write_file(home / "Library" / "Application Support" / "Claude" / "Cache" / "cache.bin", 100)
+            write_file(home / "Library" / "Application Support" / "Cursor" / "Code Cache" / "code.bin", 100)
+
+            report = scan(ScanConfig(home=home, system_root=root, min_size=1))
+            by_title = {finding.title: finding for finding in report.findings}
+
+            self.assertEqual(by_title["conda packages"].action, "clean-directory-contents")
+            self.assertEqual(by_title["Ruby gem cache"].action, "clean-directory-contents")
+            self.assertEqual(by_title["uv cache"].action, "clean-directory-contents")
+            self.assertEqual(by_title["Go build cache"].action, "clean-directory-contents")
+            self.assertEqual(by_title["Go module download cache"].action, "clean-directory-contents")
+            self.assertEqual(by_title["Xcode watchOS DeviceSupport"].action, "clean-directory-contents")
+            self.assertEqual(by_title["Adobe media cache files"].action, "clean-directory-contents")
+            self.assertEqual(by_title["Claude Cache"].action, "clean-directory-contents")
+            self.assertEqual(by_title["Cursor Code Cache"].action, "clean-directory-contents")
+
+    def test_scan_reports_unavailable_simulators_command(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "home"
+
+            report = scan(ScanConfig(home=home, system_root=root, min_size=0))
+            by_title = {finding.title: finding for finding in report.findings}
+
+            self.assertEqual(by_title["Unavailable simulators"].action, "run-xcrun-simctl-delete-unavailable")
+            self.assertEqual(by_title["Unavailable simulators"].bytes_reclaimable, 0)
+
     def test_scan_reports_browser_safari_and_generated_caches(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -131,6 +169,14 @@ class ScannerTests(unittest.TestCase):
         cases = (
             ("Homebrew cache", Path("Homebrew") / "download.bin"),
             ("Poetry cache", Path("pypoetry") / "artifact.bin"),
+            ("uv cache", Path("uv") / "wheel.whl"),
+            ("Go build cache", Path("go-build") / "obj"),
+            ("Final Cut Pro cache", Path("com.apple.FinalCut") / "cache.bin"),
+            ("Logic Pro cache", Path("com.apple.logic10") / "cache.bin"),
+            ("Figma cache", Path("com.figma.Desktop") / "cache.bin"),
+            ("Sketch cache", Path("com.bohemiancoding.sketch3") / "cache.bin"),
+            ("Blender cache", Path("org.blenderfoundation.blender") / "cache.bin"),
+            ("Unity Hub cache", Path("com.unity3d.UnityHub") / "cache.bin"),
         )
         for title, relative_path in cases:
             with self.subTest(title=title):
