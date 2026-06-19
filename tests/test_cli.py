@@ -109,6 +109,41 @@ class CliTests(unittest.TestCase):
             self.assertTrue(cache.exists())
             self.assertIn("Would reclaim", stdout.getvalue())
 
+    def test_deep_clean_cleans_aggressive_moderate_findings_but_preserves_report_only_data(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "home"
+            safari_file = home / "Library" / "Safari" / "WebsiteData" / "site.bin"
+            ai_cache = home / "Library" / "Application Support" / "Cursor" / "GPUCache" / "gpu.bin"
+            ios_backup = home / "Library" / "Application Support" / "MobileSync" / "Backup" / "device" / "backup.bin"
+            large_file = home / "Movies" / "large.mov"
+            for path in (safari_file, ai_cache, ios_backup, large_file):
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("data")
+            large_file.write_bytes(b"x" * 2048)
+            stdout = io.StringIO()
+
+            with contextlib.redirect_stdout(stdout):
+                exit_code = main([
+                    "deep-clean",
+                    "--i-understand",
+                    "deep-clean",
+                    "--home",
+                    str(home),
+                    "--system-root",
+                    str(root),
+                    "--min-size",
+                    "1B",
+                    "--large-file-threshold",
+                    "1K",
+                ])
+
+            self.assertEqual(exit_code, 0)
+            self.assertFalse(safari_file.exists())
+            self.assertFalse(ai_cache.exists())
+            self.assertTrue(ios_backup.exists())
+            self.assertTrue(large_file.exists())
+
     def test_fresh_start_cleans_actionable_safe_and_moderate_findings_only(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
