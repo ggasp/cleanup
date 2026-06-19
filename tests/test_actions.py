@@ -93,6 +93,26 @@ class ActionTests(unittest.TestCase):
             self.assertFalse(npm_file.exists())
             self.assertTrue(cursor_file.exists())
 
+    def test_fresh_start_skips_allowlisted_title_with_unexpected_action(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache_file = Path(tmp) / "home" / "Library" / "Caches" / "Homebrew" / "download.tar.gz"
+            cache_file.parent.mkdir(parents=True)
+            cache_file.write_text("data")
+            finding = Finding(
+                category="Developer",
+                title="Homebrew cache",
+                path=str(cache_file.parent),
+                bytes_reclaimable=4,
+                risk=RiskLevel.MODERATE,
+                action="remove-path",
+                detail="Unexpected action for this fresh-start allowlisted title.",
+            )
+
+            results = run_fresh_start_actions([finding], ActionContext(fresh_start=True))
+
+            self.assertEqual(results, [])
+            self.assertTrue(cache_file.exists())
+
     def test_deep_clean_skips_high_risk_even_when_action_is_set(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

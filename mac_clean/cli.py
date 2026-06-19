@@ -52,7 +52,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             render_scan(report)
         if args.i_understand != "fresh-start":
-            print("No cleanup performed. Pass --i-understand fresh-start to clean SAFE and actionable MODERATE findings.")
+            print("No cleanup performed. Pass --i-understand fresh-start to clean SAFE and allowlisted MODERATE findings.")
             return 2
         context = ActionContext(dry_run=args.dry_run, yes_safe=True, fresh_start=True)
         results = run_fresh_start_actions(report.findings, context)

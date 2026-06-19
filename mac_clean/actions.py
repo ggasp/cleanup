@@ -28,27 +28,27 @@ class ActionResult:
 
 
 DOWNLOAD_INSTALLER_PATTERNS = ("*.dmg", "*.pkg", "*.iso", "Install macOS*.app")
-FRESH_START_MODERATE_TITLES = {
-    "Downloads installers",
-    "Mail downloads",
-    "Xcode DerivedData",
-    "Xcode iOS DeviceSupport",
-    "CoreSimulator caches",
-    "Homebrew cache",
-    "Aerial and wallpaper videos",
-    "Project dependencies",
-    "npm cache",
-    "Yarn cache",
-    "pnpm store",
-    "Bun cache",
-    "pip cache",
-    "Poetry cache",
-    "Gradle cache",
-    "Maven repository",
-    "Cargo registry cache",
-    "Cargo git cache",
-    "Rustup downloads",
-    "Deno cache",
+FRESH_START_MODERATE_FINDINGS: set[tuple[str, str, str]] = {
+    ("Downloads", "Downloads installers", "remove-download-installers"),
+    ("Mail", "Mail downloads", "clean-directory-contents"),
+    ("Developer", "Xcode DerivedData", "clean-directory-contents"),
+    ("Developer", "Xcode iOS DeviceSupport", "clean-directory-contents"),
+    ("Developer", "CoreSimulator caches", "clean-directory-contents"),
+    ("Developer", "Homebrew cache", "clean-directory-contents"),
+    ("Media", "Aerial and wallpaper videos", "clean-directory-contents"),
+    ("Developer", "Project dependencies", "remove-path"),
+    ("Developer", "npm cache", "clean-directory-contents"),
+    ("Developer", "Yarn cache", "clean-directory-contents"),
+    ("Developer", "pnpm store", "clean-directory-contents"),
+    ("Developer", "Bun cache", "clean-directory-contents"),
+    ("Developer", "pip cache", "clean-directory-contents"),
+    ("Developer", "Poetry cache", "clean-directory-contents"),
+    ("Developer", "Gradle cache", "clean-directory-contents"),
+    ("Developer", "Maven repository", "clean-directory-contents"),
+    ("Developer", "Cargo registry cache", "clean-directory-contents"),
+    ("Developer", "Cargo git cache", "clean-directory-contents"),
+    ("Developer", "Rustup downloads", "clean-directory-contents"),
+    ("Developer", "Deno cache", "clean-directory-contents"),
 }
 FRESH_START_BROWSER_RUNTIME_SUFFIXES = ("Code Cache", "GPUCache", "Service Worker CacheStorage")
 COMMAND_ACTIONS: dict[str, tuple[str, ...]] = {
@@ -220,23 +220,12 @@ def run_deep_clean_actions(findings: list[Finding], context: ActionContext) -> l
     return results
 
 
-def _run_safe_and_moderate_actions(findings: list[Finding], context: ActionContext) -> list[ActionResult]:
-    results: list[ActionResult] = []
-    for finding in findings:
-        if finding.risk not in {RiskLevel.SAFE, RiskLevel.MODERATE} or finding.action is None:
-            continue
-        result = _run_action_for_finding(finding, context)
-        if result is not None:
-            results.append(result)
-    return results
-
-
 def _is_fresh_start_moderate_finding(finding: Finding) -> bool:
     if finding.risk != RiskLevel.MODERATE or finding.action is None:
         return False
-    if finding.title in FRESH_START_MODERATE_TITLES:
+    if (finding.category, finding.title, finding.action) in FRESH_START_MODERATE_FINDINGS:
         return True
-    if finding.category == "Browsers":
+    if finding.category == "Browsers" and finding.action == "clean-directory-contents":
         return not finding.title.startswith("Safari ") and finding.title.endswith(FRESH_START_BROWSER_RUNTIME_SUFFIXES)
     return False
 
