@@ -36,11 +36,43 @@ def directory_size(path: Path) -> int:
     return total
 
 
+def directory_size_excluding(path: Path, exclude_paths: tuple[Path, ...]) -> int:
+    if not exclude_paths:
+        return directory_size(path)
+    if not path.exists():
+        return 0
+    if path.is_file() or path.is_symlink():
+        return 0 if _is_excluded(path, exclude_paths) else _file_size(path)
+
+    total = 0
+    for root, dirs, files in os.walk(path, onerror=lambda _error: None):
+        root_path = Path(root)
+        kept_dirs = []
+        for dirname in dirs:
+            child = root_path / dirname
+            if child.is_symlink() or _is_excluded(child, exclude_paths):
+                continue
+            kept_dirs.append(dirname)
+        dirs[:] = kept_dirs
+        if _is_excluded(root_path, exclude_paths):
+            continue
+        for filename in files:
+            child = root_path / filename
+            if not _is_excluded(child, exclude_paths):
+                total += _file_size(child)
+    return total
+
+
 def scan(config: ScanConfig | None = None) -> ScanReport:
     config = config or ScanConfig()
     home = config.home.expanduser()
     root = config.system_root
     findings: list[Finding] = []
+    appstore_cache_paths = (home / "Library" / "Caches" / "com.apple.appstore",)
+    user_log_report_paths = (
+        home / "Library" / "Logs" / "DiagnosticReports",
+        home / "Library" / "Logs" / "CrashReporter",
+    )
 
     _add_path_finding(
         findings,
@@ -57,8 +89,9 @@ def scan(config: ScanConfig | None = None) -> ScanReport:
         title="User caches",
         path=home / "Library" / "Caches",
         risk=RiskLevel.SAFE,
-        action="clean-user-caches",
+        action=None if _any_path_exists(appstore_cache_paths) else "clean-user-caches",
         detail="Regenerable app cache files. Apps may be slower on first launch after cleanup.",
+        exclude_paths=appstore_cache_paths,
     )
     _add_path_finding(
         findings,
@@ -66,8 +99,9 @@ def scan(config: ScanConfig | None = None) -> ScanReport:
         title="User logs",
         path=home / "Library" / "Logs",
         risk=RiskLevel.SAFE,
-        action="clean-directory-contents",
+        action=None if _any_path_exists(user_log_report_paths) else "clean-directory-contents",
         detail="Regenerable user-level logs and diagnostic output.",
+        exclude_paths=user_log_report_paths,
     )
     _add_safari_storage(findings, home)
     _add_generated_macos_storage(findings, home, root)
@@ -176,6 +210,25 @@ def _file_size(path: Path) -> int:
         return 0
 
 
+def _is_excluded(path: Path, exclude_paths: tuple[Path, ...]) -> bool:
+    try:
+        resolved = path.resolve(strict=False)
+    except OSError:
+        resolved = path.absolute()
+    for exclude_path in exclude_paths:
+        try:
+            exclude_resolved = exclude_path.resolve(strict=False)
+        except OSError:
+            exclude_resolved = exclude_path.absolute()
+        if resolved == exclude_resolved or exclude_resolved in resolved.parents:
+            return True
+    return False
+
+
+def _any_path_exists(paths: tuple[Path, ...]) -> bool:
+    return any(path.exists() for path in paths)
+
+
 def _add_path_finding(
     findings: list[Finding],
     *,
@@ -185,8 +238,9 @@ def _add_path_finding(
     risk: RiskLevel,
     action: str | None,
     detail: str,
+    exclude_paths: tuple[Path, ...] = (),
 ) -> None:
-    size = directory_size(path)
+    size = directory_size_excluding(path, exclude_paths)
     if size <= 0:
         return
     findings.append(Finding(category, title, str(path), size, risk, action, detail))
