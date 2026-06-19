@@ -4,7 +4,9 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
+from mac_clean.actions import ActionResult
 from mac_clean.cli import main
 
 
@@ -175,6 +177,50 @@ class CliTests(unittest.TestCase):
                 exit_code = main(["doctor", "--home", str(home), "--system-root", tmp])
 
             self.assertEqual(exit_code, 0)
+
+    def test_clean_outputs_action_message(self):
+        output = self._run_cleanup_with_result_message(
+            ["clean", "--yes-safe"],
+            "mac_clean.cli.run_safe_actions",
+        )
+
+        self.assertIn("Reclaimed 0 B from /tmp/action-target - Command exited with 1.", output)
+
+    def test_fresh_start_outputs_action_message(self):
+        output = self._run_cleanup_with_result_message(
+            ["fresh-start", "--i-understand", "fresh-start"],
+            "mac_clean.cli.run_fresh_start_actions",
+        )
+
+        self.assertIn("Reclaimed 0 B from /tmp/action-target - Command exited with 1.", output)
+
+    def test_deep_clean_outputs_action_message(self):
+        output = self._run_cleanup_with_result_message(
+            ["deep-clean", "--i-understand", "deep-clean"],
+            "mac_clean.cli.run_deep_clean_actions",
+        )
+
+        self.assertIn("Reclaimed 0 B from /tmp/action-target - Command exited with 1.", output)
+
+    def _run_cleanup_with_result_message(self, command: list[str], action_runner: str) -> str:
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp) / "home"
+            home.mkdir()
+            stdout = io.StringIO()
+            result = ActionResult(
+                action="run-test-command",
+                path="/tmp/action-target",
+                bytes_reclaimed=0,
+                dry_run=False,
+                message="Command exited with 1.",
+            )
+
+            with patch(action_runner, return_value=[result]):
+                with contextlib.redirect_stdout(stdout):
+                    exit_code = main([*command, "--home", str(home), "--system-root", tmp])
+
+            self.assertEqual(exit_code, 0)
+            return stdout.getvalue()
 
 
 if __name__ == "__main__":

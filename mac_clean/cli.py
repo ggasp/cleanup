@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from .actions import ActionContext, run_deep_clean_actions, run_fresh_start_actions, run_safe_actions
+from .actions import ActionContext, ActionResult, run_deep_clean_actions, run_fresh_start_actions, run_safe_actions
 from .models import format_bytes
 from .reporters import render_doctor, render_json, render_scan
 from .scanner import ScanConfig, scan
@@ -41,8 +41,7 @@ def main(argv: list[str] | None = None) -> int:
         context = ActionContext(dry_run=args.dry_run, yes_safe=args.yes_safe)
         results = run_safe_actions(report.findings, context)
         for result in results:
-            verb = "Would reclaim" if result.dry_run else "Reclaimed"
-            print(f"{verb} {format_bytes(result.bytes_reclaimed)} from {result.path}")
+            print(format_action_result(result))
         if not args.yes_safe:
             print("No cleanup performed. Pass --yes-safe to clean SAFE findings.")
         return 0
@@ -58,8 +57,7 @@ def main(argv: list[str] | None = None) -> int:
         context = ActionContext(dry_run=args.dry_run, yes_safe=True, fresh_start=True)
         results = run_fresh_start_actions(report.findings, context)
         for result in results:
-            verb = "Would reclaim" if result.dry_run else "Reclaimed"
-            print(f"{verb} {format_bytes(result.bytes_reclaimed)} from {result.path}")
+            print(format_action_result(result))
         return 0
 
     if command == "deep-clean":
@@ -73,12 +71,19 @@ def main(argv: list[str] | None = None) -> int:
         context = ActionContext(dry_run=args.dry_run, yes_safe=True, fresh_start=True, deep_clean=True)
         results = run_deep_clean_actions(report.findings, context)
         for result in results:
-            verb = "Would reclaim" if result.dry_run else "Reclaimed"
-            print(f"{verb} {format_bytes(result.bytes_reclaimed)} from {result.path}")
+            print(format_action_result(result))
         return 0
 
     parser.error(f"Unknown command: {command}")
     return 2
+
+
+def format_action_result(result: ActionResult) -> str:
+    verb = "Would reclaim" if result.dry_run else "Reclaimed"
+    line = f"{verb} {format_bytes(result.bytes_reclaimed)} from {result.path}"
+    if result.message:
+        line = f"{line} - {result.message}"
+    return line
 
 
 def build_parser() -> argparse.ArgumentParser:
