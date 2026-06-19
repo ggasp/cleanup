@@ -50,6 +50,29 @@ class ScannerTests(unittest.TestCase):
             self.assertEqual(by_title["Project dependencies"].action, "remove-path")
             self.assertEqual(by_title["Aerial and wallpaper videos"].action, "clean-directory-contents")
 
+    def test_scan_reports_browser_safari_and_generated_caches(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "home"
+            write_file(home / "Library" / "Safari" / "Databases" / "site.db", 100)
+            write_file(home / "Library" / "Safari" / "LocalStorage" / "site.localstorage", 100)
+            write_file(home / "Library" / "Safari" / "WebsiteData" / "data.bin", 100)
+            write_file(home / "Library" / "Application Support" / "Google" / "Chrome" / "Default" / "Service Worker" / "CacheStorage" / "cache.bin", 100)
+            write_file(home / "Library" / "Logs" / "DiagnosticReports" / "crash.crash", 100)
+            write_file(home / "Library" / "Caches" / "com.apple.appstore" / "download.bin", 100)
+            write_file(root / "Library" / "Caches" / "com.apple.SoftwareUpdate" / "update.bin", 100)
+
+            report = scan(ScanConfig(home=home, system_root=root, min_size=1))
+            by_title = {finding.title: finding for finding in report.findings}
+
+            self.assertEqual(by_title["Safari Databases"].action, "clean-directory-contents")
+            self.assertEqual(by_title["Safari LocalStorage"].action, "clean-directory-contents")
+            self.assertEqual(by_title["Safari WebsiteData"].action, "clean-directory-contents")
+            self.assertEqual(by_title["Chrome Service Worker CacheStorage"].action, "clean-directory-contents")
+            self.assertEqual(by_title["Diagnostic reports"].action, "clean-directory-contents")
+            self.assertEqual(by_title["App Store cache"].action, "clean-directory-contents")
+            self.assertEqual(by_title["Software Update cache"].action, "clean-directory-contents")
+
     def test_scan_respects_min_size(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

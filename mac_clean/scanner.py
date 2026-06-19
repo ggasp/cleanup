@@ -69,6 +69,8 @@ def scan(config: ScanConfig | None = None) -> ScanReport:
         action="clean-directory-contents",
         detail="Regenerable user-level logs and diagnostic output.",
     )
+    _add_safari_storage(findings, home)
+    _add_generated_macos_storage(findings, home, root)
     _add_browser_runtime_caches(findings, home)
     _add_package_manager_caches(findings, home)
     _add_grouped_files(
@@ -251,13 +253,18 @@ def _add_browser_runtime_caches(findings: list[Finding], home: Path) -> None:
         ("Brave", home / "Library" / "Application Support" / "BraveSoftware" / "Brave-Browser"),
         ("Vivaldi", home / "Library" / "Application Support" / "Vivaldi"),
         ("Arc", home / "Library" / "Application Support" / "Arc"),
+        ("Opera", home / "Library" / "Application Support" / "com.operasoftware.Opera"),
     )
-    cache_names = ("Code Cache", "GPUCache", "Service Worker")
+    cache_patterns = (
+        ("Code Cache", "*/Code Cache"),
+        ("GPUCache", "*/GPUCache"),
+        ("Service Worker CacheStorage", "*/Service Worker/CacheStorage"),
+    )
     for browser_name, browser_root in browser_roots:
         if not browser_root.exists():
             continue
-        for cache_name in cache_names:
-            for path in browser_root.glob(f"*/{cache_name}"):
+        for cache_name, pattern in cache_patterns:
+            for path in browser_root.glob(pattern):
                 _add_path_finding(
                     findings,
                     category="Browsers",
@@ -267,6 +274,43 @@ def _add_browser_runtime_caches(findings: list[Finding], home: Path) -> None:
                     action="clean-directory-contents",
                     detail="Runtime browser cache. Sites and web apps rebuild it as needed.",
                 )
+
+
+def _add_safari_storage(findings: list[Finding], home: Path) -> None:
+    paths = (
+        ("Safari Databases", home / "Library" / "Safari" / "Databases"),
+        ("Safari LocalStorage", home / "Library" / "Safari" / "LocalStorage"),
+        ("Safari WebsiteData", home / "Library" / "Safari" / "WebsiteData"),
+    )
+    for title, path in paths:
+        _add_path_finding(
+            findings,
+            category="Browsers",
+            title=title,
+            path=path,
+            risk=RiskLevel.MODERATE,
+            action="clean-directory-contents",
+            detail="Safari website storage. Sites may need to re-cache data or sign in again.",
+        )
+
+
+def _add_generated_macos_storage(findings: list[Finding], home: Path, root: Path) -> None:
+    paths = (
+        ("Diagnostic reports", home / "Library" / "Logs" / "DiagnosticReports", RiskLevel.SAFE),
+        ("Crash reports", home / "Library" / "Logs" / "CrashReporter", RiskLevel.SAFE),
+        ("App Store cache", home / "Library" / "Caches" / "com.apple.appstore", RiskLevel.MODERATE),
+        ("Software Update cache", root / "Library" / "Caches" / "com.apple.SoftwareUpdate", RiskLevel.MODERATE),
+    )
+    for title, path, risk in paths:
+        _add_path_finding(
+            findings,
+            category="System",
+            title=title,
+            path=path,
+            risk=risk,
+            action="clean-directory-contents",
+            detail="Generated macOS storage. macOS may recreate this data when needed.",
+        )
 
 
 def _add_package_manager_caches(findings: list[Finding], home: Path) -> None:
