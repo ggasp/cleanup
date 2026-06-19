@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from mac_clean.actions import ActionContext, clean_directory_contents, run_deep_clean_actions
+from mac_clean.actions import ActionContext, clean_directory_contents, run_deep_clean_actions, run_fresh_start_actions
 from mac_clean.models import Finding, RiskLevel
 
 
@@ -58,6 +58,40 @@ class ActionTests(unittest.TestCase):
 
             self.assertEqual(len(results), 1)
             self.assertFalse(cache_file.exists())
+
+    def test_fresh_start_removes_allowlisted_moderate_and_skips_deep_only_moderate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            npm_file = Path(tmp) / "home" / ".npm" / "_cacache" / "content.bin"
+            cursor_file = Path(tmp) / "home" / "Library" / "Application Support" / "Cursor" / "GPUCache" / "gpu.bin"
+            for file_path in (npm_file, cursor_file):
+                file_path.parent.mkdir(parents=True, exist_ok=True)
+                file_path.write_text("data")
+            findings = [
+                Finding(
+                    category="Developer",
+                    title="npm cache",
+                    path=str(npm_file.parent),
+                    bytes_reclaimable=4,
+                    risk=RiskLevel.MODERATE,
+                    action="clean-directory-contents",
+                    detail="Package manager cache.",
+                ),
+                Finding(
+                    category="AI and Editors",
+                    title="Cursor GPUCache",
+                    path=str(cursor_file.parent),
+                    bytes_reclaimable=4,
+                    risk=RiskLevel.MODERATE,
+                    action="clean-directory-contents",
+                    detail="Editor cache.",
+                ),
+            ]
+
+            results = run_fresh_start_actions(findings, ActionContext(fresh_start=True))
+
+            self.assertEqual(len(results), 1)
+            self.assertFalse(npm_file.exists())
+            self.assertTrue(cursor_file.exists())
 
     def test_deep_clean_skips_high_risk_even_when_action_is_set(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -51,6 +51,30 @@ class CliTests(unittest.TestCase):
             self.assertEqual(exit_code, 0)
             self.assertTrue(file_path.exists())
 
+    def test_clean_yes_safe_cleans_actionable_safe_findings_beyond_basic_cache_paths(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "home"
+            diagnostic_report = home / "Library" / "Logs" / "DiagnosticReports" / "crash.crash"
+            diagnostic_report.parent.mkdir(parents=True)
+            diagnostic_report.write_text("data")
+            stdout = io.StringIO()
+
+            with contextlib.redirect_stdout(stdout):
+                exit_code = main([
+                    "clean",
+                    "--yes-safe",
+                    "--home",
+                    str(home),
+                    "--system-root",
+                    str(root),
+                    "--min-size",
+                    "1B",
+                ])
+
+            self.assertEqual(exit_code, 0)
+            self.assertFalse(diagnostic_report.exists())
+
     def test_fresh_start_requires_keyword(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp) / "home"
@@ -143,6 +167,36 @@ class CliTests(unittest.TestCase):
             self.assertFalse(ai_cache.exists())
             self.assertTrue(ios_backup.exists())
             self.assertTrue(large_file.exists())
+
+    def test_fresh_start_preserves_deep_only_moderate_findings(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "home"
+            safari_file = home / "Library" / "Safari" / "WebsiteData" / "site.bin"
+            cursor_cache = home / "Library" / "Application Support" / "Cursor" / "GPUCache" / "gpu.bin"
+            npm_cache = home / ".npm" / "_cacache" / "content.bin"
+            for path in (safari_file, cursor_cache, npm_cache):
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("data")
+            stdout = io.StringIO()
+
+            with contextlib.redirect_stdout(stdout):
+                exit_code = main([
+                    "fresh-start",
+                    "--i-understand",
+                    "fresh-start",
+                    "--home",
+                    str(home),
+                    "--system-root",
+                    str(root),
+                    "--min-size",
+                    "1B",
+                ])
+
+            self.assertEqual(exit_code, 0)
+            self.assertTrue(safari_file.exists())
+            self.assertTrue(cursor_cache.exists())
+            self.assertFalse(npm_cache.exists())
 
     def test_fresh_start_cleans_actionable_safe_and_moderate_findings_only(self):
         with tempfile.TemporaryDirectory() as tmp:

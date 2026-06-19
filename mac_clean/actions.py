@@ -28,6 +28,29 @@ class ActionResult:
 
 
 DOWNLOAD_INSTALLER_PATTERNS = ("*.dmg", "*.pkg", "*.iso", "Install macOS*.app")
+FRESH_START_MODERATE_TITLES = {
+    "Downloads installers",
+    "Mail downloads",
+    "Xcode DerivedData",
+    "Xcode iOS DeviceSupport",
+    "CoreSimulator caches",
+    "Homebrew cache",
+    "Aerial and wallpaper videos",
+    "Project dependencies",
+    "npm cache",
+    "Yarn cache",
+    "pnpm store",
+    "Bun cache",
+    "pip cache",
+    "Poetry cache",
+    "Gradle cache",
+    "Maven repository",
+    "Cargo registry cache",
+    "Cargo git cache",
+    "Rustup downloads",
+    "Deno cache",
+}
+FRESH_START_BROWSER_RUNTIME_SUFFIXES = ("Code Cache", "GPUCache", "Service Worker CacheStorage")
 COMMAND_ACTIONS: dict[str, tuple[str, ...]] = {
     "run-xcrun-simctl-delete-unavailable": ("/usr/bin/xcrun", "simctl", "delete", "unavailable"),
 }
@@ -157,18 +180,31 @@ def run_safe_actions(findings: list[Finding], context: ActionContext) -> list[Ac
             continue
         if not context.yes_safe:
             continue
-        if finding.action in {"clean-trash", "clean-user-caches"}:
-            result = clean_directory_contents(Path(finding.path), context)
-            results.append(
-                ActionResult(finding.action, result.path, result.bytes_reclaimed, result.dry_run, result.message)
-            )
+        result = _run_action_for_finding(finding, context)
+        if result is not None:
+            results.append(result)
     return results
 
 
 def run_fresh_start_actions(findings: list[Finding], context: ActionContext) -> list[ActionResult]:
     if not context.fresh_start:
         return []
-    return _run_safe_and_moderate_actions(findings, context)
+    results: list[ActionResult] = []
+    for finding in findings:
+        if finding.action is None:
+            continue
+        if finding.risk == RiskLevel.SAFE:
+            should_run = True
+        elif finding.risk == RiskLevel.MODERATE:
+            should_run = _is_fresh_start_moderate_finding(finding)
+        else:
+            should_run = False
+        if not should_run:
+            continue
+        result = _run_action_for_finding(finding, context)
+        if result is not None:
+            results.append(result)
+    return results
 
 
 def run_deep_clean_actions(findings: list[Finding], context: ActionContext) -> list[ActionResult]:
@@ -193,6 +229,16 @@ def _run_safe_and_moderate_actions(findings: list[Finding], context: ActionConte
         if result is not None:
             results.append(result)
     return results
+
+
+def _is_fresh_start_moderate_finding(finding: Finding) -> bool:
+    if finding.risk != RiskLevel.MODERATE or finding.action is None:
+        return False
+    if finding.title in FRESH_START_MODERATE_TITLES:
+        return True
+    if finding.category == "Browsers":
+        return not finding.title.startswith("Safari ") and finding.title.endswith(FRESH_START_BROWSER_RUNTIME_SUFFIXES)
+    return False
 
 
 def _run_action_for_finding(finding: Finding, context: ActionContext) -> ActionResult | None:
