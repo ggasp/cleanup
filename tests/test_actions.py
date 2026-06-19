@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from mac_clean.actions import ActionContext, clean_directory_contents, run_deep_clean_actions
 from mac_clean.models import Finding, RiskLevel
@@ -135,6 +136,40 @@ class ActionTests(unittest.TestCase):
             self.assertFalse(cache.exists())
             self.assertFalse(code_cache.exists())
             self.assertTrue(preserved.exists())
+
+    def test_command_backed_action_dry_run_does_not_execute(self):
+        finding = Finding(
+            category="Developer",
+            title="Unavailable simulators",
+            path="xcrun simctl delete unavailable",
+            bytes_reclaimable=0,
+            risk=RiskLevel.MODERATE,
+            action="run-xcrun-simctl-delete-unavailable",
+            detail="Deletes unavailable simulator records.",
+        )
+
+        with patch("mac_clean.actions.subprocess.run") as run:
+            results = run_deep_clean_actions([finding], ActionContext(deep_clean=True, dry_run=True))
+
+        run.assert_not_called()
+        self.assertEqual(len(results), 1)
+        self.assertTrue(results[0].dry_run)
+        self.assertIn("Would run", results[0].message)
+
+    def test_unknown_command_action_is_ignored(self):
+        finding = Finding(
+            category="Developer",
+            title="Unknown command",
+            path="unknown",
+            bytes_reclaimable=0,
+            risk=RiskLevel.MODERATE,
+            action="run-rm-rf-home",
+            detail="Invalid action.",
+        )
+
+        results = run_deep_clean_actions([finding], ActionContext(deep_clean=True, dry_run=True))
+
+        self.assertEqual(results, [])
 
 
 if __name__ == "__main__":

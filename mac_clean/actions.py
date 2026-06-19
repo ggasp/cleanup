@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+import subprocess
 from dataclasses import dataclass
 from fnmatch import fnmatch
 from pathlib import Path
@@ -27,6 +28,9 @@ class ActionResult:
 
 
 DOWNLOAD_INSTALLER_PATTERNS = ("*.dmg", "*.pkg", "*.iso", "Install macOS*.app")
+COMMAND_ACTIONS: dict[str, tuple[str, ...]] = {
+    "run-xcrun-simctl-delete-unavailable": ("xcrun", "simctl", "delete", "unavailable"),
+}
 
 
 def clean_directory_contents(path: Path, context: ActionContext) -> ActionResult:
@@ -123,6 +127,26 @@ def remove_path(path: Path, context: ActionContext) -> ActionResult:
     )
 
 
+def run_command_action(action: str, context: ActionContext) -> ActionResult | None:
+    command = COMMAND_ACTIONS.get(action)
+    if command is None:
+        return None
+    command_text = " ".join(command)
+    if context.dry_run:
+        return ActionResult(action, command_text, 0, True, f"Would run: {command_text}")
+    completed = subprocess.run(command, check=False, capture_output=True, text=True)
+    if completed.returncode == 0:
+        message = "Command completed."
+    else:
+        stderr = completed.stderr.strip()
+        message = (
+            f"Command exited with {completed.returncode}: {stderr}"
+            if stderr
+            else f"Command exited with {completed.returncode}."
+        )
+    return ActionResult(action, command_text, 0, False, message)
+
+
 def run_safe_actions(findings: list[Finding], context: ActionContext) -> list[ActionResult]:
     results: list[ActionResult] = []
     for finding in findings:
@@ -169,6 +193,10 @@ def _run_safe_and_moderate_actions(findings: list[Finding], context: ActionConte
 
 
 def _run_action_for_finding(finding: Finding, context: ActionContext) -> ActionResult | None:
+    if finding.action in COMMAND_ACTIONS:
+        return run_command_action(finding.action, context)
+    if finding.action.startswith("run-"):
+        return None
     path = Path(finding.path)
     if not path.exists():
         return ActionResult(finding.action, str(path), 0, context.dry_run, "Path already absent.")
