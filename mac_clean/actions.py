@@ -121,6 +121,16 @@ def run_safe_actions(findings: list[Finding], context: ActionContext) -> list[Ac
 def run_fresh_start_actions(findings: list[Finding], context: ActionContext) -> list[ActionResult]:
     if not context.fresh_start:
         return []
+    return _run_safe_and_moderate_actions(findings, context)
+
+
+def run_deep_clean_actions(findings: list[Finding], context: ActionContext) -> list[ActionResult]:
+    if not context.deep_clean:
+        return []
+    return _run_safe_and_moderate_actions(findings, context)
+
+
+def _run_safe_and_moderate_actions(findings: list[Finding], context: ActionContext) -> list[ActionResult]:
     results: list[ActionResult] = []
     for finding in findings:
         if finding.risk not in {RiskLevel.SAFE, RiskLevel.MODERATE} or finding.action is None:
@@ -129,12 +139,6 @@ def run_fresh_start_actions(findings: list[Finding], context: ActionContext) -> 
         if result is not None:
             results.append(result)
     return results
-
-
-def run_deep_clean_actions(findings: list[Finding], context: ActionContext) -> list[ActionResult]:
-    if not context.deep_clean:
-        return []
-    return run_fresh_start_actions(findings, context)
 
 
 def _run_action_for_finding(finding: Finding, context: ActionContext) -> ActionResult | None:
