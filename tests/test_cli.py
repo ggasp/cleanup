@@ -1,0 +1,181 @@
+import contextlib
+import io
+import json
+import tempfile
+import unittest
+from pathlib import Path
+
+from mac_clean.cli import main
+
+
+class CliTests(unittest.TestCase):
+    def test_scan_json_outputs_valid_report(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp) / "home"
+            trash = home / ".Trash"
+            trash.mkdir(parents=True)
+            (trash / "file.txt").write_text("data")
+            stdout = io.StringIO()
+
+            with contextlib.redirect_stdout(stdout):
+                exit_code = main(["scan", "--json", "--home", str(home), "--system-root", tmp, "--min-size", "1B"])
+
+            self.assertEqual(exit_code, 0)
+            payload = json.loads(stdout.getvalue())
+            self.assertEqual(payload["findings"][0]["title"], "Trash")
+
+    def test_clean_dry_run_yes_safe_does_not_delete(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp) / "home"
+            cache = home / "Library" / "Caches" / "app"
+            cache.mkdir(parents=True)
+            file_path = cache / "file.txt"
+            file_path.write_text("data")
+            stdout = io.StringIO()
+
+            with contextlib.redirect_stdout(stdout):
+                exit_code = main([
+                    "clean",
+                    "--dry-run",
+                    "--yes-safe",
+                    "--home",
+                    str(home),
+                    "--system-root",
+                    tmp,
+                    "--min-size",
+                    "1B",
+                ])
+
+            self.assertEqual(exit_code, 0)
+            self.assertTrue(file_path.exists())
+
+    def test_fresh_start_requires_keyword(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp) / "home"
+            cache = home / "Library" / "Caches" / "app"
+            cache.mkdir(parents=True)
+            file_path = cache / "file.txt"
+            file_path.write_text("data")
+            stdout = io.StringIO()
+
+            with contextlib.redirect_stdout(stdout):
+                exit_code = main(["fresh-start", "--home", str(home), "--system-root", tmp, "--min-size", "1B"])
+
+            self.assertEqual(exit_code, 2)
+            self.assertTrue(file_path.exists())
+
+    def test_deep_clean_requires_keyword(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "home"
+            cache = home / "Library" / "Caches" / "app" / "cache.bin"
+            cache.parent.mkdir(parents=True)
+            cache.write_text("data")
+            stdout = io.StringIO()
+
+            with contextlib.redirect_stdout(stdout):
+                exit_code = main(["deep-clean", "--home", str(home), "--system-root", str(root), "--min-size", "1B"])
+
+            self.assertEqual(exit_code, 2)
+            self.assertTrue(cache.exists())
+            self.assertIn("No cleanup performed", stdout.getvalue())
+
+    def test_deep_clean_dry_run_does_not_delete_actionable_moderate_findings(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "home"
+            cache = home / ".cache" / "pip" / "http" / "cache.bin"
+            cache.parent.mkdir(parents=True)
+            cache.write_text("data")
+            stdout = io.StringIO()
+
+            with contextlib.redirect_stdout(stdout):
+                exit_code = main([
+                    "deep-clean",
+                    "--dry-run",
+                    "--i-understand",
+                    "deep-clean",
+                    "--home",
+                    str(home),
+                    "--system-root",
+                    str(root),
+                    "--min-size",
+                    "1B",
+                ])
+
+            self.assertEqual(exit_code, 0)
+            self.assertTrue(cache.exists())
+            self.assertIn("Would reclaim", stdout.getvalue())
+
+    def test_fresh_start_cleans_actionable_safe_and_moderate_findings_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "home"
+            safe_cache = home / "Library" / "Caches" / "app" / "cache.bin"
+            moderate_cache = home / ".npm" / "_cacache" / "content.bin"
+            installer = home / "Downloads" / "installer.dmg"
+            project_dependency = home / "Workspace" / "app" / "node_modules" / "pkg" / "index.js"
+            high_risk_backup = home / "Library" / "Application Support" / "MobileSync" / "Backup" / "device" / "backup.bin"
+            for path in (safe_cache, moderate_cache, installer, project_dependency, high_risk_backup):
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("data")
+            stdout = io.StringIO()
+
+            with contextlib.redirect_stdout(stdout):
+                exit_code = main([
+                    "fresh-start",
+                    "--i-understand",
+                    "fresh-start",
+                    "--home",
+                    str(home),
+                    "--system-root",
+                    str(root),
+                    "--min-size",
+                    "1B",
+                ])
+
+            self.assertEqual(exit_code, 0)
+            self.assertFalse(safe_cache.exists())
+            self.assertFalse(moderate_cache.exists())
+            self.assertFalse(installer.exists())
+            self.assertFalse((home / "Workspace" / "app" / "node_modules").exists())
+            self.assertTrue(high_risk_backup.exists())
+
+    def test_fresh_start_tolerates_nested_findings_removed_by_parent_action(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "home"
+            homebrew_cache = home / "Library" / "Caches" / "Homebrew" / "download.tar.gz"
+            homebrew_cache.parent.mkdir(parents=True)
+            homebrew_cache.write_text("data")
+            stdout = io.StringIO()
+
+            with contextlib.redirect_stdout(stdout):
+                exit_code = main([
+                    "fresh-start",
+                    "--i-understand",
+                    "fresh-start",
+                    "--home",
+                    str(home),
+                    "--system-root",
+                    str(root),
+                    "--min-size",
+                    "1B",
+                ])
+
+            self.assertEqual(exit_code, 0)
+            self.assertFalse(homebrew_cache.exists())
+
+    def test_doctor_returns_success(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp) / "home"
+            stdout = io.StringIO()
+
+            with contextlib.redirect_stdout(stdout):
+                exit_code = main(["doctor", "--home", str(home), "--system-root", tmp])
+
+            self.assertEqual(exit_code, 0)
+
+
+if __name__ == "__main__":
+    unittest.main()
