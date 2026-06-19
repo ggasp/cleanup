@@ -29,7 +29,7 @@ class ActionResult:
 
 DOWNLOAD_INSTALLER_PATTERNS = ("*.dmg", "*.pkg", "*.iso", "Install macOS*.app")
 COMMAND_ACTIONS: dict[str, tuple[str, ...]] = {
-    "run-xcrun-simctl-delete-unavailable": ("xcrun", "simctl", "delete", "unavailable"),
+    "run-xcrun-simctl-delete-unavailable": ("/usr/bin/xcrun", "simctl", "delete", "unavailable"),
 }
 
 
@@ -134,7 +134,10 @@ def run_command_action(action: str, context: ActionContext) -> ActionResult | No
     command_text = " ".join(command)
     if context.dry_run:
         return ActionResult(action, command_text, 0, True, f"Would run: {command_text}")
-    completed = subprocess.run(command, check=False, capture_output=True, text=True)
+    try:
+        completed = subprocess.run(command, check=False, capture_output=True, text=True)
+    except OSError as error:
+        return ActionResult(action, command_text, 0, False, f"Command could not be run: {error}")
     if completed.returncode == 0:
         message = "Command completed."
     else:

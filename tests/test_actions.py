@@ -156,6 +156,52 @@ class ActionTests(unittest.TestCase):
         self.assertTrue(results[0].dry_run)
         self.assertIn("Would run", results[0].message)
 
+    def test_command_backed_action_runs_absolute_argv(self):
+        finding = Finding(
+            category="Developer",
+            title="Unavailable simulators",
+            path="/usr/bin/xcrun simctl delete unavailable",
+            bytes_reclaimable=0,
+            risk=RiskLevel.MODERATE,
+            action="run-xcrun-simctl-delete-unavailable",
+            detail="Deletes unavailable simulator records.",
+        )
+
+        with patch("mac_clean.actions.subprocess.run") as run:
+            run.return_value.returncode = 0
+            run.return_value.stderr = ""
+            results = run_deep_clean_actions([finding], ActionContext(deep_clean=True))
+
+        run.assert_called_once_with(
+            ("/usr/bin/xcrun", "simctl", "delete", "unavailable"),
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(len(results), 1)
+        self.assertFalse(results[0].dry_run)
+        self.assertEqual(results[0].message, "Command completed.")
+
+    def test_command_backed_action_reports_launch_failure(self):
+        finding = Finding(
+            category="Developer",
+            title="Unavailable simulators",
+            path="/usr/bin/xcrun simctl delete unavailable",
+            bytes_reclaimable=0,
+            risk=RiskLevel.MODERATE,
+            action="run-xcrun-simctl-delete-unavailable",
+            detail="Deletes unavailable simulator records.",
+        )
+
+        with patch("mac_clean.actions.subprocess.run") as run:
+            run.side_effect = FileNotFoundError("missing xcrun")
+            results = run_deep_clean_actions([finding], ActionContext(deep_clean=True))
+
+        self.assertEqual(len(results), 1)
+        self.assertFalse(results[0].dry_run)
+        self.assertIn("could not be run", results[0].message)
+        self.assertIn("missing xcrun", results[0].message)
+
     def test_unknown_command_action_is_ignored(self):
         finding = Finding(
             category="Developer",
